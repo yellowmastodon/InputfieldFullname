@@ -1,0 +1,231 @@
+<?php
+
+namespace ProcessWire;
+
+class InputfieldFullName extends Inputfield implements Module
+{
+
+    public static function getModuleInfo()
+    {
+        return [
+            'title' => 'Full Name Selector',
+            'summary' => 'Generates full name combinations from first and last name fields and stores in a hidden field of user\'s choosing.',
+            'author' => 'Juraj Mydla',
+            'version' => 001,
+            'installs' => 'FieldtypeFullName',
+        ];
+    }
+
+
+
+    public function init()
+    {
+        $this->set('firstNameField', '');
+        $this->set('lastNameField', '');
+        $this->set('fullNameField', '');
+        parent::init();
+        $this->forceRenderHiddenField();
+    }
+
+
+
+    public function forceRenderHiddenField()
+    {
+        static $hiddenFieldsHooked = [];
+
+        $this->addHookAfter('Field::getInputfield', function (HookEvent $event) use (&$hiddenFieldsHooked) {
+            // Only for ProcessPageEdit
+            if ($this->page->process !== 'ProcessPageEdit') return;
+            $targetHiddenField = $this->get('fullNameField');
+            $field = $event->object;
+            $inputfield = $event->return;
+            if ($field->name === $targetHiddenField  && !in_array($inputfield->name, $hiddenFieldsHooked)) {
+                //bd($inputfield->name);
+                //bd($inputfield);
+                //bd($hiddenFieldsHooked);
+                $hiddenFieldsHooked[] = $inputfield->name;
+                if ($inputfield->collapsed = Inputfield::collapsedHidden) {
+                    $inputfield->set('collapsed', Inputfield::collapsedNo);
+                    $inputfield->set('id', $inputfield->id());
+                    $inputfield->addClass('uk-hidden', 'wrapClass');
+                }
+                $event->return = $inputfield;
+            }
+        });
+    }
+
+    public function ___render()
+    {
+
+        //$this->forceRenderHiddenField();
+
+        $page = $this->hasPage;
+        $firstNameField = array('name' => $this->get('firstNameField'));
+        $lastNameField = array('name' => $this->get('lastNameField'));
+        $targetHiddenField = array('name' => $this->get('fullNameField'));
+
+        //complicated get method to allow for hooking, in js we search by closest inputfield wrapper
+        /*        $firstNameField["field"] = $page->getField($firstNameField["name"])->getInputfield($page);
+        $lastNameField["field"] = $page->getField($lastNameField["name"])->getInputfield($page);
+        $targetHiddenField["field"] = $page->getField($targetHiddenField["name"])->getInputfield($page); */
+        $missing_f = array();
+
+        foreach (
+            [
+                $firstNameField,
+                $lastNameField,
+                $targetHiddenField
+            ]
+            as $field
+        ) {
+            if (!$page->hasField($field["name"])) $missing_f[] = '"' . $field["name"] . '"';
+        }
+
+        //set this after check if has field, if hidden, the field is not rendered, and getInputField would return false
+        //bd($targetHiddenField["field"]);
+        $first_name = trim($page->{$firstNameField["name"]});
+        $last_name = trim($page->{$lastNameField["name"]});
+        $full_name = trim($page->{$targetHiddenField["name"]});
+
+        //Return error, if fields not present
+        if (!empty($missing_f)) {
+            return '<p class="ui-state-error">' . sprintf($this->_('Template missing fields set in this inputfield: %s'), implode(", ", $missing_f) . '</code>');
+        }
+
+        $opt1 = $first_name . ' ' . $last_name;
+        $opt2 = $last_name . ' ' . $first_name;
+        $placeholder_text = $this->_('Full name of a person');
+
+
+        $output = '<select id="' . $this->id . '" data-placeholder-option="' . $placeholder_text . '">';
+        $output .= $first_name === "" || $last_name === "" || $full_name === "" ? '>' : '>';
+        if ($first_name === "" && $last_name === ""){
+            $output .= '<option disabled selected="">' . $placeholder_text . '</option>';
+        } else if ($first_name === ""){
+            $output .= '<option selected value="' . $last_name . '">' . $last_name . '</option>';
+        } else if ($last_name === ""){
+            $output .= '<option selected value="' . $first_name . '">' . $first_name . '</option>';
+        } else {
+            $output .= '<option';
+            $output .= $full_name === $opt1 ? ' selected=""' : '';
+            $output .= ' value="' . $opt1 . '">' . $opt1 . '</option>';
+            $output .= '<option';
+            $output .= $full_name === $opt2 ? ' selected=""' : '';
+            $output .= '<option' .  ' '. 'value="' .  $opt2 . '">' .  $opt2 . '</option>';
+        }
+        $output .= '</select>';
+       
+
+        //Set js variables
+        //bd($this->name);
+        //bd($targetHiddenField["field"]);
+        //bd($targetHiddenField["field"]->name);
+
+        $jsInputfieldName = function (string $fieldName) use ($page) {
+            if ($page instanceof \ProcessWire\RepeaterPage) {
+                return "Inputfield_{$fieldName}_repeater{$page->id}";
+            }
+            return "Inputfield_{$fieldName}";
+        };
+
+        $this->config->js('InputfieldFullName', array_merge(
+            $this->config->js('InputfieldFullName') ?: [],
+            [
+                /*                $this->name => [
+                    'firstNameField' => $firstNameField['field']->name,
+                    'lastNameField' => $lastNameField['field']->name,
+                    'fullNameField' => $targetHiddenField["field"]->name,
+                    'fieldNameId' => $this->id
+                ] */
+                $this->name => [
+                    'firstNameField' => $jsInputfieldName($firstNameField['name']),
+                    'lastNameField'  => $jsInputfieldName($lastNameField['name']),
+                    'fullNameField'  => $jsInputfieldName($targetHiddenField['name']),
+                    'fieldNameId'    => $this->id,
+                ]
+            ]
+        ));
+
+        //$this->config->scripts->add($this->urls->getModuleUrl() . 'InputfieldFullName.js');
+
+        return $output;
+    }
+
+    public function buildOptions($first_name, $last_name, $full_name)
+    {
+        // prepare the two possible full name combinations
+        $option1 = $first_name . ' ' . $last_name;
+        $option2 = $last_name . ' ' . $first_name;
+
+        $defaultLabel = $this->_('Full name of a person');
+        $selectedDefault = false;
+
+        if ($full_name === '') {
+            $selectedDefault = true;
+        } elseif ($full_name === $option1 || $full_name === $option2) {
+            $selectedDefault = false;
+        } else {
+            $selectedDefault = true;
+        }
+
+        $output = '<select id="' . $this->id . '">';
+        $output .= '<option disabled' . ($selectedDefault ? ' selected' : '') . '>' .
+            htmlentities($defaultLabel) . '</option>';
+
+        // If we have a non-empty first name, we can produce the two combinations
+        if ($first_name !== '') {
+            // option1
+            $isSel1 = (!$selectedDefault && $full_name === $option1);
+            $output .= '<option value="' . htmlentities($option1) . '"'
+                . ($isSel1 ? ' selected' : '') . '>'
+                . htmlentities($option1) . '</option>';
+
+            // option2
+            $isSel2 = (!$selectedDefault && $full_name === $option2);
+            $output .= '<option value="' . htmlentities($option2) . '"'
+                . ($isSel2 ? ' selected' : '') . '>'
+                . htmlentities($option2) . '</option>';
+        } elseif ($last_name !== '') {
+            // only last name present — you might treat it similarly
+            // use that as single option
+            $single = $last_name . ' ' . $last_name;
+            $isSel = (!$selectedDefault && $full_name === $single);
+            $output .= '<option value="' . htmlentities($single) . '"'
+                . ($isSel ? ' selected' : '') . '>'
+                . htmlentities($single) . '</option>';
+        }
+
+        // close select
+        $output .= '</select>';
+
+        return $output;
+    }
+
+
+    public function ___getConfigInputfields()
+    {
+        $inputfields = parent::___getConfigInputfields();
+        $f = $this->modules->get('InputfieldText');
+        $f->attr('name', 'firstNameField');
+        $f->label = 'First Name Field Selector (e.g., "first_name")';
+        $f->required = true;
+        $f->attr('value', $this->getSetting('firstNameField'));
+        $inputfields->add($f);
+
+        $f = $this->modules->get('InputfieldText');
+        $f->attr('name', 'lastNameField');
+        $f->label = 'Last Name Field Selector (e.g., "last_name")';
+        $f->required = true;
+        $f->attr('value', $this->getSetting('lastNameField'));
+        $inputfields->add($f);
+
+        $f = $this->modules->get('InputfieldText');
+        $f->attr('name', 'fullNameField');
+        $f->label = 'Hidden Field to Populate (e.g., "title")';
+        $f->required = true;
+        $f->attr('value', $this->getSetting('fullNameField'));
+        $inputfields->add($f);
+
+        return $inputfields;
+    }
+}

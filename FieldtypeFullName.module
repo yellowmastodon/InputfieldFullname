@@ -1,0 +1,35 @@
+<?php namespace ProcessWire;
+
+class FieldtypeFullName extends Fieldtype implements Module {
+
+    public static function getModuleInfo() {
+        return [
+            'title' => 'Full Name',
+            'version' => 001,
+            'summary' => 'Dummy fieldtype to enable InputfieldAuthorFullName in field editor.',
+            'author' => 'Juraj Mydla',
+            'singular' => true,
+            'autoload' => false,
+        ];
+    }
+
+     public function getInputfield(Page $page, Field $field) {
+
+        $inputfield = $this->wire()->modules->get('InputfieldFullName'); 
+        $inputfield->class = $this->className();
+        return $inputfield;
+    }
+ 
+    // Prevent saving data
+    public function sanitizeValue(Page $page, Field $field, $value) {
+        return ''; // no value saved
+    }
+
+  /*   public function ___wakeupValue(Page $page, Field $field, $value) {
+        return ''; // don't load anything
+    } */
+
+    public function isEmpty(Field $field, $value) {
+        return true; // always empty
+    }
+}
