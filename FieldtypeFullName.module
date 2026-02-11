@@ -6,7 +6,7 @@ class FieldtypeFullName extends Fieldtype implements Module {
         return [
             'title' => 'Full Name',
             'version' => 001,
-            'summary' => 'Dummy fieldtype to enable InputfieldAuthorFullName in field editor.',
+            'summary' => 'Dummy fieldtype to enable InputfieldFullName in field editor.',
             'author' => 'Juraj Mydla',
             'singular' => true,
             'autoload' => false,
