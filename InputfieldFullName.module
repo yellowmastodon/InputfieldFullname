@@ -40,9 +40,7 @@ class InputfieldFullName extends Inputfield implements Module
             $field = $event->object;
             $inputfield = $event->return;
             if ($field->name === $targetHiddenField  && !in_array($inputfield->name, $hiddenFieldsHooked)) {
-                //bd($inputfield->name);
-                //bd($inputfield);
-                //bd($hiddenFieldsHooked);
+
                 $hiddenFieldsHooked[] = $inputfield->name;
                 if ($inputfield->collapsed = Inputfield::collapsedHidden) {
                     $inputfield->set('collapsed', Inputfield::collapsedNo);
