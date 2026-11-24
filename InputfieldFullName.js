@@ -1,60 +1,91 @@
 document.addEventListener("DOMContentLoaded", () => {
   const config = ProcessWire.config.InputfieldFullName;
+  if (!config) return;
+
   Object.values(config).forEach((cfg) => {
     const fullNameSelect = document.getElementById(cfg.fieldNameId);
     const firstNameInput = document.getElementById(cfg.firstNameField);
     const lastNameInput = document.getElementById(cfg.lastNameField);
     const targetInput = document.getElementById(cfg.fullNameField);
-    const placeholderText = fullNameSelect.getAttribute(
-      "data-placeholder-option",
-    );
-    let fullNameOptions = fullNameSelect.querySelectorAll("option");
+
+    if (!firstNameInput || !lastNameInput || !fullNameSelect || !targetInput)
+      return;
+
+    const placeholderText = fullNameSelect.getAttribute("data-placeholder-option");
+    const isFullNameHidden = () =>
+      fullNameSelect.closest(".Inputfield")?.classList.contains("InputfieldStateHidden") ?? false;
+    let lastGeneratedValue = null;
+    const updateTargetInput = (value) => {
+      if (isFullNameHidden()) return;
+      if (targetInput.value === value) return;
+
+      targetInput.value = value;
+      targetInput.dispatchEvent(new Event("input", { bubbles: true }));
+      targetInput.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    // Helper to evaluate tokens like {field_name} in frontend
+    const formatWithPatterns = (rawName) => {
+      if (!rawName) return "";
+
+      const replaceTokens = (pattern) => {
+        if (!pattern) return "";
+        return pattern.replace(/\{([a-zA-Z0-9_\-]+)\}/g, (match, fieldName) => {
+          // Try to find corresponding input field in the DOM
+          const foundInput = document.getElementById(`Inputfield_${fieldName}`) || 
+                             document.querySelector(`[name="${fieldName}"]`);
+          return foundInput ? foundInput.value : "";
+        });
+      };
+
+      const prepend = replaceTokens(cfg.prependPattern);
+      const append = replaceTokens(cfg.appendPattern);
+
+      return [prepend, rawName, append].filter(Boolean).join(" ").trim();
+    };
 
     const constructFullNameOptions = (firstName, lastName) => {
-      const previousValue = fullNameSelect.value; // remember before rebuild
-      const previousIndex = fullNameSelect.selectedIndex;
+      if (isFullNameHidden()) return;
 
-      fullNameOptions = fullNameSelect.querySelectorAll("option");
+      const previousIndex = fullNameSelect.selectedIndex;
+      let fullNameOptions = fullNameSelect.querySelectorAll("option");
 
       if (firstName !== "" || lastName !== "") {
+        const rawOpt1 = [firstName, lastName].filter(Boolean).join(" ");
+        const rawOpt2 = [lastName, firstName].filter(Boolean).join(" ");
+
+        const opt1 = formatWithPatterns(rawOpt1);
+        const opt2 = formatWithPatterns(rawOpt2);
+
         if (fullNameOptions.length < 2 && firstName !== "" && lastName !== "") {
           let secondOption = document.createElement("option");
-          secondOption.innerHTML = `${firstName} ${lastName}`;
-          secondOption.value = `${firstName} ${lastName}`;
           fullNameSelect.appendChild(secondOption);
           fullNameOptions = fullNameSelect.querySelectorAll("option");
         }
 
         if (firstName !== "" && lastName !== "") {
-          fullNameOptions[0].innerHTML = `${firstName} ${lastName}`;
-          fullNameOptions[0].value = `${firstName} ${lastName}`;
+          fullNameOptions[0].innerHTML = opt1;
+          fullNameOptions[0].value = opt1;
           if (fullNameOptions[1]) {
-            fullNameOptions[1].innerHTML = `${lastName} ${firstName}`;
-            fullNameOptions[1].value = `${lastName} ${firstName}`;
+            fullNameOptions[1].innerHTML = opt2;
+            fullNameOptions[1].value = opt2;
           }
-        } else if (firstName !== "") {
+        } else {
           if (fullNameOptions.length > 1) {
             fullNameOptions[1]?.remove();
             fullNameOptions = fullNameSelect.querySelectorAll("option");
           }
-          fullNameOptions[0].innerHTML = firstName;
-          fullNameOptions[0].value = firstName;
-        } else if (lastName !== "") {
-          if (fullNameOptions.length > 1) {
-            fullNameOptions[1]?.remove();
-            fullNameOptions = fullNameSelect.querySelectorAll("option");
-          }
-          fullNameOptions[0].innerHTML = lastName;
-          fullNameOptions[0].value = lastName;
+          const singleRaw = firstName !== "" ? firstName : lastName;
+          const singleFormatted = formatWithPatterns(singleRaw);
+          fullNameOptions[0].innerHTML = singleFormatted;
+          fullNameOptions[0].value = singleFormatted;
         }
 
         fullNameSelect.classList.remove("disabled");
         fullNameSelect.tabIndex = "";
         fullNameOptions[0].disabled = false;
 
-        // restore previous selection if it's still a valid option, else default to 0
-        const restoredIndex =
-          previousIndex < fullNameOptions.length ? previousIndex : 0;
+        const restoredIndex = previousIndex < fullNameOptions.length ? previousIndex : 0;
         fullNameSelect.selectedIndex = restoredIndex;
       } else {
         fullNameOptions[1]?.remove();
@@ -67,7 +98,16 @@ document.addEventListener("DOMContentLoaded", () => {
         fullNameSelect.classList.add("disabled");
       }
 
-      targetInput.value = fullNameSelect.value;
+      if (firstName !== "" || lastName !== "") {
+        lastGeneratedValue = fullNameSelect.value;
+        updateTargetInput(lastGeneratedValue);
+      } else if (
+        lastGeneratedValue !== null &&
+        targetInput.value === lastGeneratedValue
+      ) {
+        lastGeneratedValue = "";
+        updateTargetInput("");
+      }
     };
 
     const onNameInput = () => {
@@ -76,17 +116,32 @@ document.addEventListener("DOMContentLoaded", () => {
       constructFullNameOptions(firstName, lastName);
     };
 
-    if (!firstNameInput || !lastNameInput || !fullNameSelect || !targetInput)
-      return;
-
     firstNameInput.addEventListener("input", onNameInput);
     lastNameInput.addEventListener("input", onNameInput);
 
-    fullNameSelect.addEventListener("change", () => {
-      targetInput.value = fullNameSelect.value;
+    // If prepend/append patterns use other fields, listen to inputs on those fields too
+    const patternFields = [...(cfg.prependPattern.match(/\{([a-zA-Z0-9_\-]+)\}/g) || []), 
+                           ...(cfg.appendPattern.match(/\{([a-zA-Z0-9_\-]+)\}/g) || [])];
+    
+    patternFields.forEach(token => {
+      const fieldName = token.replace(/[{}]/g, '');
+      const dependentInput = document.getElementById(`Inputfield_${fieldName}`) || 
+                             document.querySelector(`[name="${fieldName}"]`);
+      if (dependentInput) {
+        dependentInput.addEventListener("input", onNameInput);
+      }
     });
 
-    // initialize on load
+    fullNameSelect.addEventListener("change", () => {
+      if (isFullNameHidden()) return;
+
+      if (firstNameInput.value.trim() || lastNameInput.value.trim()) {
+        lastGeneratedValue = fullNameSelect.value;
+        updateTargetInput(lastGeneratedValue);
+      }
+    });
+
+    // Initialize on load
     onNameInput();
   });
 });
